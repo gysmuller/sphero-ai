@@ -1,0 +1,6 @@
+Flask
+Flask-SocketIO
+spherov2
+python-dotenv
+requests
+openai 
