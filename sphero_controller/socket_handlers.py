@@ -6,6 +6,7 @@ This module contains the socket event handlers for controlling the Sphero robot.
 
 from . import sphero_connection as sphero
 from . import random_movement
+from . import openai_processor
 
 def register_handlers(socketio):
     """
@@ -122,6 +123,29 @@ def register_handlers(socketio):
         except Exception as e:
             socketio.emit('status', {'message': f'Error spinning: {str(e)}'})
 
+    @socketio.on('set_heading')
+    def handle_set_heading(data):
+        """
+        Set the Sphero's heading (orientation).
+        
+        Args:
+            data: Dictionary containing 'heading' value in degrees (0-359)
+        """
+        try:
+            heading = int(data['heading'])
+            
+            # Check if the sphero module has a set_heading function
+            if hasattr(sphero, 'set_heading'):
+                success, message = sphero.set_heading(heading)
+            else:
+                # Fallback to implement with roll at 0 speed if set_heading doesn't exist
+                success, message = sphero.roll(heading, 0, 0.1)
+                message = f"Set heading to {heading}° (using roll method)"
+                
+            socketio.emit('status', {'message': message})
+        except Exception as e:
+            socketio.emit('status', {'message': f'Error setting heading: {str(e)}'})
+
     @socketio.on('start_random_movement')
     def handle_start_random_movement():
         """Start the random movement mode."""
@@ -135,6 +159,24 @@ def register_handlers(socketio):
         success, message = random_movement.stop_random_movement_command(socketio)
         socketio.emit('status', {'message': message})
         socketio.sleep(0)
+
+    @socketio.on('process_openai_response')
+    def handle_openai_response(data):
+        """
+        Process the OpenAI response data from the client.
+        
+        Args:
+            data: Dictionary containing the response data from OpenAI
+        """
+        print("Received OpenAI response for processing")
+        server_event = data.get('event')
+        
+        # Use the openai_processor module to process the response
+        success, message = openai_processor.process_openai_response(server_event, socketio)
+        
+        # Send status message back to the client
+        if message:
+            socketio.emit('openai_status', {'message': message})
 
     @socketio.on('disconnect')
     def handle_client_disconnect():

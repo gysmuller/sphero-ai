@@ -399,109 +399,25 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const serverEvent = JSON.parse(event.data);
             console.log("Voice Event Received:", serverEvent);
-
-            // Primary goal: Detect function call for random movement
-            if (serverEvent.type === "response.done" && serverEvent.response?.output) {
-                serverEvent.response.output.forEach(outputItem => {
-                    if (outputItem.type === "function_call" && outputItem.name === "start_sphero_random_movement") {
-                        console.log("Function call detected: start_sphero_random_movement");
-                        openaiStatusMessage.innerText = "Livvy is starting to move!";
-
-                        // Check if Sphero is connected before emitting
-                        if (isConnected) {
-                            // Trigger the random movement via SocketIO to the backend
-                            socket.emit('start_random_movement');
-                            // Note: We don't need to send function output back unless the function
-                            // returned data that the AI needed to respond further.
-                        } else {
-                            openaiStatusMessage.innerText = "Livvy wants to move, but isn't connected yet.";
-                            console.warn("Received function call but Sphero is not connected.");
-                        }
-                    }
-                    
-                    // Process message content for code blocks
-                    if (outputItem.type === "message" && outputItem.content) {
-                        outputItem.content.forEach(contentItem => {
-                            if (contentItem.type === "audio" && contentItem.transcript) {
-                                const transcript = contentItem.transcript;
-                                console.log("Processing transcript:", transcript);
-                                
-                                // Extract Python code from markdown code blocks
-                                const codeBlockRegex = /```(?:python)?\s*\n([\s\S]*?)\n```/g;
-                                let match;
-                                
-                                while ((match = codeBlockRegex.exec(transcript)) !== null) {
-                                    const code = match[1].trim();
-                                    console.log("Executing Sphero code:", code);
-                                    openaiStatusMessage.innerText = "Executing Sphero commands...";
-                                    
-                                    if (isConnected) {
-                                        // Process and execute each line of code
-                                        const lines = code.split('\n');
-                                        lines.forEach(line => {
-                                            const trimmedLine = line.trim();
-                                            if (!trimmedLine || trimmedLine.startsWith('#')) return; // Skip empty lines and comments
-                                            
-                                            // Parse and execute different Sphero commands
-                                            if (trimmedLine.startsWith('set_main_led')) {
-                                                const colorMatch = trimmedLine.match(/Color\(r=(\d+),\s*g=(\d+),\s*b=(\d+)\)/);
-                                                if (colorMatch) {
-                                                    const r = parseInt(colorMatch[1]);
-                                                    const g = parseInt(colorMatch[2]);
-                                                    const b = parseInt(colorMatch[3]);
-                                                    console.log(`Setting color to RGB(${r},${g},${b})`);
-                                                    socket.emit('set_color', { r, g, b });
-                                                }
-                                            } else if (trimmedLine.startsWith('roll')) {
-                                                const rollMatch = trimmedLine.match(/roll\((\d+),\s*(\d+),\s*([\d.]+)\)/);
-                                                if (rollMatch) {
-                                                    const heading = parseInt(rollMatch[1]);
-                                                    const speed = parseInt(rollMatch[2]);
-                                                    const duration = parseFloat(rollMatch[3]);
-                                                    console.log(`Rolling with heading ${heading}, speed ${speed}, duration ${duration}`);
-                                                    socket.emit('roll', { heading, speed, duration });
-                                                }
-                                            } else if (trimmedLine.startsWith('spin')) {
-                                                const spinMatch = trimmedLine.match(/spin\(([-\d]+),\s*([\d.]+)\)/);
-                                                if (spinMatch) {
-                                                    const degrees = parseInt(spinMatch[1]);
-                                                    const duration = parseFloat(spinMatch[2]);
-                                                    console.log(`Spinning ${degrees} degrees over ${duration} seconds`);
-                                                    socket.emit('spin', { degrees, duration });
-                                                }
-                                            } else if (trimmedLine.startsWith('set_heading')) {
-                                                const headingMatch = trimmedLine.match(/set_heading\((\d+)\)/);
-                                                if (headingMatch) {
-                                                    const heading = parseInt(headingMatch[1]);
-                                                    console.log(`Setting heading to ${heading} degrees`);
-                                                    // Note: You might need to add a socket event for set_heading
-                                                    socket.emit('set_heading', { heading });
-                                                }
-                                            }
-                                        });
-                                        
-                                        openaiStatusMessage.innerText = "Livvy executed the commands!";
-                                    } else {
-                                        openaiStatusMessage.innerText = "Livvy wants to move, but isn't connected yet.";
-                                        console.warn("Can't execute commands - Sphero not connected");
-                                    }
-                                }
-                            }
-                        });
-                    }
-                });
+            
+            // Instead of processing locally, send to backend for processing
+            socket.emit('process_openai_response', { event: serverEvent });
+            
+            // Update user about receiving a response
+            if (serverEvent.type === "response.done") {
+                openaiStatusMessage.innerText = "Processing response from Livvy...";
             }
-            // Handle other event types if necessary (e.g., errors, transcription deltas)
-            else if (serverEvent.type === "error") {
-                console.error("OpenAI Error Event:", serverEvent);
-                openaiStatusMessage.innerText = `OpenAI Error: ${serverEvent.message}`;
-            }
-            // Add handlers for other events like session.updated, transcription deltas etc. if needed
-
+            
         } catch (error) {
             console.error("Error parsing OpenAI event:", error, "Raw data:", event.data);
+            openaiStatusMessage.innerText = `Error parsing OpenAI response: ${error.message}`;
         }
     }
+
+    // Listen for status updates from the backend about OpenAI processing
+    socket.on('openai_status', function(data) {
+        openaiStatusMessage.innerText = data.message;
+    });
 
     function updateOpenAIUIState() {
         startOpenAISessionBtn.disabled = isOpenAISessionActive;
