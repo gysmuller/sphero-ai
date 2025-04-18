@@ -72,3 +72,4 @@ instance/
 
 # Local development settings
 local_settings.py 
+/docs
