@@ -340,19 +340,19 @@ document.addEventListener('DOMContentLoaded', function() {
             };
 
             // 6. Start the session using SDP
-            const offer = await pc.createOffer();
+            const offer = await pc.createOffer({
+                offerToReceiveAudio: false,
+                offerToReceiveVideo: false
+              });
             await pc.setLocalDescription(offer);
             openaiStatusMessage.innerText = "Sending connection offer to OpenAI...";
 
-            const model = sessionData.model; // Use model from session data
-            const sdpResponse = await fetch(`https://api.openai.com/v1/realtime?model=${model}`, {
+            const sdpResponse = await fetch(`https://api.openai.com/v1/realtime`, {
                 method: "POST",
                 body: offer.sdp,
                 headers: {
                     Authorization: `Bearer ${EPHEMERAL_KEY}`,
                     "Content-Type": "application/sdp",
-                    // Required Beta header for WebSocket, might be needed here too?
-                    // "OpenAI-Beta": "realtime=v1"
                 },
             });
 

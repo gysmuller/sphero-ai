@@ -6,6 +6,7 @@ Module for processing OpenAI responses and executing Sphero commands.
 import re
 from . import sphero_connection as sphero
 from . import random_movement
+from .openai_integration import call_openai_response_api
 
 def process_openai_response(server_event, socketio):
     """
@@ -22,11 +23,14 @@ def process_openai_response(server_event, socketio):
     try:
         if not server_event:
             return False, 'Invalid OpenAI response data'
-            
-        # Process function call for random movement
-        if server_event.get('type') == "response.done" and server_event.get('response', {}).get('output'):
-            return process_response_output(server_event['response']['output'], socketio)
         
+        if server_event.get('type') == "conversation.item.input_audio_transcription.completed":
+            print("Input audio transcription completed")
+            print(server_event)
+            transcript = server_event.get('transcript', '')
+            process_response_output(transcript, socketio)
+            return True, 'OpenAI response processed'
+
         # Handle errors
         elif server_event.get('type') == "error":
             error_msg = server_event.get('message', 'Unknown error')
@@ -39,39 +43,23 @@ def process_openai_response(server_event, socketio):
         print(f"Error processing OpenAI response: {str(e)}")
         return False, f'Error processing response: {str(e)}'
 
-def process_response_output(output_items, socketio):
+def process_response_output(transcript, socketio):
     """
     Process the output items from OpenAI response.
     
     Args:
-        output_items (list): List of output items from OpenAI response
+        transcript (str): The transcript to send to the Response API
         socketio: Flask-SocketIO instance for emitting events
         
     Returns:
         bool: Success status
         str: Status message
     """
-    messages = []
+
+    # Call the OpenAI Response API
+    response_message = call_openai_response_api(transcript)
+    process_transcript(response_message.get("data"), socketio)
     
-    for output_item in output_items:
-        # Handle function calls
-        if output_item.get('type') == "function_call" and output_item.get('name') == "start_sphero_random_movement":
-            success, msg = handle_random_movement(socketio)
-            if success:
-                messages.append('Livvy is starting to move!')
-            else:
-                messages.append(msg)
-        
-        # Process message content for code blocks
-        if output_item.get('type') == "message" and output_item.get('content'):
-            for content_item in output_item['content']:
-                if content_item.get('type') == "audio" and content_item.get('transcript'):
-                    success, msg = process_transcript(content_item['transcript'], socketio)
-                    if msg:
-                        messages.append(msg)
-    
-    if messages:
-        return True, ' '.join(messages)
     return True, 'Response processed'
 
 def handle_random_movement(socketio):
@@ -95,7 +83,7 @@ def handle_random_movement(socketio):
 
 def process_transcript(transcript, socketio):
     """
-    Process transcript from OpenAI response and execute any code blocks.
+    Process transcript from OpenAI response and execute commands.
     
     Args:
         transcript (str): The transcript text from OpenAI
@@ -107,37 +95,40 @@ def process_transcript(transcript, socketio):
     """
     print(f"Processing transcript: {transcript}")
     
-    # Extract Python code from markdown code blocks
-    code_blocks = re.findall(r'```(?:python)?\s*\n([\s\S]*?)\n```', transcript)
-    
-    if not code_blocks:
+    if not transcript or not ';' in transcript:
         return True, None
     
     if not sphero.is_connected:
         return False, 'Livvy wants to move, but Sphero is not connected.'
     
-    for code in code_blocks:
-        code = code.strip()
-        print(f"Executing Sphero code: {code}")
+    commands = transcript.split(';')
+    print(f"Executing {len(commands)} Sphero commands")
+    
+    for command in commands:
+        command = command.strip()
+        if not command or command.startswith('#'):
+            continue  # Skip empty commands and comments
         
-        # Process and execute each line of code
-        lines = code.split('\n')
-        for line in lines:
-            line = line.strip()
-            if not line or line.startswith('#'):
-                continue  # Skip empty lines and comments
-            
-            # Parse and execute different Sphero commands
-            if line.startswith('set_main_led'):
-                process_set_color_command(line)
-            elif line.startswith('roll'):
-                process_roll_command(line)
-            elif line.startswith('spin'):
-                process_spin_command(line)
-            elif line.startswith('set_heading'):
-                process_heading_command(line)
+        process_command_line(command)
     
     return True, 'Livvy executed the commands!'
+
+def process_command_line(line):
+    """
+    Process and execute a single command line.
+    
+    Args:
+        line (str): The command line to process
+    """
+    if line.startswith('set_main_led'):
+        process_set_color_command(line)
+    elif line.startswith('roll'):
+        process_roll_command(line)
+    elif line.startswith('spin'):
+        process_spin_command(line)
+    elif line.startswith('set_heading'):
+        process_heading_command(line)
+    # Add more command processors as needed
 
 def process_set_color_command(line):
     """

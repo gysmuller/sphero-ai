@@ -35,6 +35,28 @@ start_random_movement_tool = {
     }
 }
 
+def call_openai_response_api(transcript):
+    """
+    Call the OpenAI Response API with the transcript.
+    
+    Args:
+        transcript (str): The transcript text to send to the API
+        
+    Returns:
+        dict: The API response data or error information
+    """
+    try:
+        response = openai_client.responses.create(
+            model="gpt-4.1-mini",
+            input=transcript,
+            instructions=SPHERO_CONTROL_PROMPT
+        )
+        return {"success": True, "data": response.output_text}
+    except Exception as e:
+        error_message = str(e)
+        print(f"Error calling OpenAI Response API: {error_message}")
+        return {"success": False, "error": error_message}
+
 def create_realtime_session():
     """
     Create an OpenAI Realtime session and return the session details.
@@ -45,17 +67,27 @@ def create_realtime_session():
     try:
         # Make a request to the OpenAI REST API to create a session
         response = requests.post(
-            "https://api.openai.com/v1/realtime/sessions",
+            "https://api.openai.com/v1/realtime/transcription_sessions",
             headers={
                 "Authorization": f"Bearer {openai_client.api_key}",
                 "Content-Type": "application/json",
             },
             json={
-                "model": "gpt-4o-realtime-preview-2024-12-17",
-                "voice": "verse",
-                "tools": [start_random_movement_tool], # Provide the function tool
-                "tool_choice": "auto", # Let the model decide when to call the function
-                "instructions": SPHERO_CONTROL_PROMPT
+                "input_audio_format": "pcm16",
+                "input_audio_transcription": {
+                    "model": "gpt-4o-transcribe",
+                    "prompt": "", 
+                    "language": "en"
+                },
+                "turn_detection": {
+                    "type": "server_vad",
+                    "threshold": 0.5,
+                    "prefix_padding_ms": 300,
+                    "silence_duration_ms": 200
+                },
+                "input_audio_noise_reduction": {
+                    "type": "far_field"
+                }
             }
         )
         response.raise_for_status() # Raise exception for bad status codes
