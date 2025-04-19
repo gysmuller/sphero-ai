@@ -1,15 +1,20 @@
 """
 Flask Routes Module
 
-This module contains the Flask routes for the Sphero Web Control Interface.
+This module contains the Flask routes for the Sphero controller.
 """
 
-from flask import render_template, jsonify, request
+from flask import Flask, render_template, request, jsonify
+from . import sphero_connection
 from . import openai_integration
+import logging
 
-def register_routes(app):
+# Configure logging
+logger = logging.getLogger("routes")
+
+def register_routes(app: Flask) -> None:
     """
-    Register all Flask routes with the application.
+    Register the Flask routes with the application.
     
     Args:
         app: Flask application instance
@@ -17,19 +22,24 @@ def register_routes(app):
     
     @app.route('/')
     def index():
-        """Render the main control page."""
+        """Render the main web interface."""
         return render_template('index.html')
-
+    
+    @app.route('/api/connection-status', methods=['GET'])
+    def connection_status():
+        """Get the current connection status."""
+        return jsonify(sphero_connection.sphero.get_connection_status())
+        
     @app.route('/session', methods=['POST'])
     def create_openai_session():
         """Create an OpenAI Realtime session and return the ephemeral token."""
-        print("Received request to create OpenAI Realtime session...")
+        logger.info("Received request to create OpenAI Realtime session...")
         
         success, response_data = openai_integration.create_realtime_session()
         
         if success:
-            print("OpenAI Realtime session created successfully.")
+            logger.info("OpenAI Realtime session created successfully.")
             return jsonify(response_data)
         else:
-            print(f"Error creating OpenAI session: {response_data.get('error')}")
+            logger.error(f"Error creating OpenAI session: {response_data.get('error')}")
             return jsonify(response_data), 500 
