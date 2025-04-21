@@ -41,7 +41,6 @@ Expression Rules:
 
 Response format:
 - Always respond with valid method calls only.
-- Method calls should be separated by semicolons.
 - Do not include natural language, explanations, or comments.
 
 Example:
