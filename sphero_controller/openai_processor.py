@@ -4,8 +4,9 @@ OpenAI Response Processor
 Module for processing OpenAI responses and executing Sphero commands.
 """
 import re
+import json
 import logging
-from typing import Tuple, Any, Dict, Optional
+from typing import Tuple, Any, Dict, Optional, List
 from . import sphero_connection
 from . import random_movement
 from .openai_integration import call_openai_response_api
@@ -91,7 +92,7 @@ def process_transcript(transcript: str, socketio: Any) -> Tuple[bool, Optional[s
     Process transcript from OpenAI response and execute commands.
     
     Args:
-        transcript: The transcript text from OpenAI
+        transcript: The JSON-formatted commands from OpenAI
         socketio: Flask-SocketIO instance for emitting events
         
     Returns:
@@ -99,94 +100,101 @@ def process_transcript(transcript: str, socketio: Any) -> Tuple[bool, Optional[s
     """
     logger.info(f"Processing transcript: {transcript}")
     
-    if not transcript or not ';' in transcript:
+    if not transcript:
         return True, None
     
     if not sphero.is_connected:
         return False, 'Livvy wants to move, but Sphero is not connected.'
     
-    commands = transcript.split(';')
-    logger.info(f"Executing {len(commands)} Sphero commands")
-    
-    for command in commands:
-        command = command.strip()
-        if not command or command.startswith('#'):
-            continue  # Skip empty commands and comments
+    try:
+        # Split multiple JSON objects if needed
+        command_sets = split_json_objects(transcript)
+        total_commands = 0
         
-        process_command_line(command)
-    
-    return True, 'Livvy executed the commands!'
+        for command_set in command_sets:
+            command_data = json.loads(command_set)
+            commands = command_data.get('commands', [])
+            total_commands += len(commands)
+            
+            for cmd in commands:
+                command_name = cmd.get('command')
+                parameters = cmd.get('parameters', {})
+                process_command(command_name, parameters)
+        
+        logger.info(f"Executed {total_commands} Sphero commands")
+        return True, 'Livvy executed the commands!'
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON parsing error: {str(e)}")
+        return False, f'Error parsing command data: {str(e)}'
+    except Exception as e:
+        logger.error(f"Error processing commands: {str(e)}")
+        return False, f'Error processing commands: {str(e)}'
 
-def process_command_line(line: str) -> None:
+def split_json_objects(text: str) -> List[str]:
     """
-    Process and execute a single command line.
+    Split multiple JSON objects in a string.
     
     Args:
-        line: The command line to process
+        text: String containing potentially multiple JSON objects
+        
+    Returns:
+        List of individual JSON object strings
     """
-    if line.startswith('set_main_led'):
-        process_set_color_command(line)
-    elif line.startswith('roll'):
-        process_roll_command(line)
-    elif line.startswith('spin'):
-        process_spin_command(line)
-    elif line.startswith('set_heading'):
-        process_heading_command(line)
+    result = []
+    depth = 0
+    start = 0
+    
+    for i, char in enumerate(text):
+        if char == '{':
+            if depth == 0:
+                start = i
+            depth += 1
+        elif char == '}':
+            depth -= 1
+            if depth == 0:
+                result.append(text[start:i+1])
+    
+    return result
+
+def process_command(command_name: str, parameters: Dict[str, str]) -> None:
+    """
+    Process and execute a single command.
+    
+    Args:
+        command_name: The name of the command to execute
+        parameters: The parameters for the command
+    """
+    if command_name == 'set_main_led':
+        process_set_color_command(parameters.get('param1', ''))
+    elif command_name == 'roll':
+        heading = parameters.get('param1', '0')
+        speed = parameters.get('param2', '0')
+        duration = parameters.get('param3', '1.0')
+        logger.info(f"Rolling with heading {heading}, speed {speed}, duration {duration}")
+        sphero.roll(int(heading), int(speed), float(duration) if duration else 1.0)
+    elif command_name == 'spin':
+        degrees = parameters.get('param1', '0')
+        duration = parameters.get('param2', '1.0')
+        logger.info(f"Spinning {degrees} degrees over {duration} seconds")
+        sphero.spin(int(degrees), float(duration) if duration else 1.0)
+    elif command_name == 'set_heading':
+        heading = parameters.get('param1', '0')
+        logger.info(f"Setting heading to {heading} degrees")
+        sphero.set_heading(int(heading))
     # Add more command processors as needed
 
-def process_set_color_command(line: str) -> None:
+def process_set_color_command(color_param: str) -> None:
     """
     Process and execute a set_main_led command.
     
     Args:
-        line: The command line to process
+        color_param: The color parameter string
     """
-    color_match = re.search(r'Color\(r=(\d+),\s*g=(\d+),\s*b=(\d+)\)', line)
+    color_match = re.search(r'Color\(r=(\d+),\s*g=(\d+),\s*b=(\d+)\)', color_param)
     if color_match:
         r = int(color_match.group(1))
         g = int(color_match.group(2))
         b = int(color_match.group(3))
         logger.info(f"Setting color to RGB({r},{g},{b})")
-        sphero.set_main_led(r, g, b)
-
-def process_roll_command(line: str) -> None:
-    """
-    Process and execute a roll command.
-    
-    Args:
-        line: The command line to process
-    """
-    roll_match = re.search(r'roll\((\d+),\s*(\d+),\s*([\d.]+)\)', line)
-    if roll_match:
-        heading = int(roll_match.group(1))
-        speed = int(roll_match.group(2))
-        duration = float(roll_match.group(3))
-        logger.info(f"Rolling with heading {heading}, speed {speed}, duration {duration}")
-        sphero.roll(heading, speed, duration)
-
-def process_spin_command(line: str) -> None:
-    """
-    Process and execute a spin command.
-    
-    Args:
-        line: The command line to process
-    """
-    spin_match = re.search(r'spin\(([-\d]+),\s*([\d.]+)\)', line)
-    if spin_match:
-        degrees = int(spin_match.group(1))
-        duration = float(spin_match.group(2))
-        logger.info(f"Spinning {degrees} degrees over {duration} seconds")
-        sphero.spin(degrees, duration)
-
-def process_heading_command(line: str) -> None:
-    """
-    Process and execute a set_heading command.
-    
-    Args:
-        line: The command line to process
-    """
-    heading_match = re.search(r'set_heading\((\d+)\)', line)
-    if heading_match:
-        heading = int(heading_match.group(1))
-        logger.info(f"Setting heading to {heading} degrees")
-        sphero.set_heading(heading) 
+        sphero.set_main_led(r, g, b) 

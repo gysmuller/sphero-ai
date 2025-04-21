@@ -50,12 +50,70 @@ def call_openai_response_api(transcript: str) -> Dict[str, Any]:
     Returns:
         The API response data or error information
     """
+
+    json_schema = {
+        "format": {
+            "type": "json_schema",
+            "name": "command_array",
+            "schema": {
+                "type": "object",
+                "properties": {
+                "commands": {
+                    "type": "array",
+                    "description": "An array of command objects that specify actions to be performed.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "command": {
+                            "type": "string",
+                            "description": "The name of the command to execute."
+                            },
+                            "parameters": {
+                            "type": "object",
+                        "description": "Key-value pairs of parameters for the command.",
+                        "properties": {
+                            "param1": {
+                            "type": "string",
+                            "description": "First parameter for the command."
+                            },
+                            "param2": {
+                            "type": "string",
+                            "description": "Second parameter for the command."
+                            }
+                        },
+                        "required": [
+                            "param1",
+                            "param2"
+                        ],
+                        "additionalProperties": False
+                        }
+                    },
+                    "required": [
+                        "command",
+                        "parameters"
+                    ],
+                    "additionalProperties": False
+                    }
+                }
+                },
+                "required": [
+                "commands"
+                ],
+                "additionalProperties": False
+            },
+            "strict": True
+            }
+        }
+    
+
     try:
         response = openai_client.responses.create(
             model="gpt-4.1-mini",
             input=transcript,
-            instructions=SPHERO_CONTROL_PROMPT
+            instructions=SPHERO_CONTROL_PROMPT,
+            text=json_schema
         )
+
         return {"success": True, "data": response.output_text}
     except Exception as e:
         error_message = str(e)
