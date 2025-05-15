@@ -131,6 +131,40 @@ static/                  # Static assets
 app.py                   # Main entry point
 ```
 
+## Voice Control Flow
+
+The following sequence diagram illustrates how a user's voice command is processed and converted into Sphero robot movements:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Browser as Web Browser
+    participant Server as Flask Server
+    participant OpenAIRealtime as OpenAI Realtime API
+    participant OpenAIResponse as OpenAI Response API
+    participant Processor as Command Processor
+    participant Sphero
+
+    User->>Browser: Speak voice command
+    Browser->>Server: Stream audio data
+    Server->>OpenAIRealtime: Forward audio stream
+    OpenAIRealtime->>OpenAIRealtime: Transcribe audio
+    OpenAIRealtime-->>Server: Return transcript
+    
+    Server->>OpenAIResponse: Send transcript with SPHERO_CONTROL_PROMPT
+    Note right of OpenAIResponse: Uses prompt from sphero_prompts.py
+    OpenAIResponse-->>Server: Return structured commands (JSON)
+    
+    Server->>Processor: Process command JSON
+    Note right of Processor: openai_processor.py parses commands
+    
+    loop For each command
+        Processor->>Sphero: Execute robot action (roll/spin/color)
+    end
+    
+    Sphero-->>User: Physical movement/LED response
+```
+
 ## Troubleshooting
 
 ### Connection Issues
