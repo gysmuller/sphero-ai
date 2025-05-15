@@ -2,6 +2,12 @@
 
 A Python implementation for controlling Sphero SPRK+ and other Sphero model robots via Bluetooth Low Energy (BLE) on macOS.
 
+## Interpretive Motion Language (IML)
+
+Livvy, our Sphero robot, has a unique way of communicating - she "speaks" entirely through movement and light! When you talk to Livvy using voice commands, she responds by interpreting your words into expressive movements, spins, and LED color changes. Each pattern of movement and color represents different emotions and responses.
+
+This interpretive motion language creates a delightful interactive experience as Livvy transforms voice commands into physical expressions.
+
 ## Features
 
 - Scan for and connect to Sphero devices
